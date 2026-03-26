@@ -1,4 +1,4 @@
-// Move quality display config — used by MoveList, popup, and sidebar
+// Move quality display config — used by popup and board overlay
 export const QUALITY_CONFIG = {
   brilliant:  { symbol: '!!', color: '#1bada6', label: 'Brilliant' },
   great:      { symbol: '!',  color: '#5c8bb0', label: 'Great Move' },
@@ -8,67 +8,103 @@ export const QUALITY_CONFIG = {
   inaccuracy: { symbol: '?!', color: '#f0a15a', label: 'Inaccuracy' },
   mistake:    { symbol: '?',  color: '#e84855', label: 'Mistake' },
   blunder:    { symbol: '??', color: '#ca3431', label: 'Blunder' },
-  missed_win: { symbol: '⊕',  color: '#e84855', label: 'Missed Win' },
+  miss:       { symbol: '⊗',  color: '#e84855', label: 'Miss' },
 };
 
 // ---------------------------------------------------------------------------
-// Win probability sigmoid (from mover's centipawn advantage)
-// Calibrated to standard chess win-rate curves
+// Expected Points from White's perspective given centipawn score (White POV).
+// EP_white ∈ (0,1):  1.0 = White wins, 0.0 = Black wins, 0.5 = equal.
 // ---------------------------------------------------------------------------
-function winProb(cpFromMoverPOV) {
-  return 1 / (1 + Math.exp(-cpFromMoverPOV / 290));
+function EP_white(cp) {
+  return 1 / (1 + Math.exp(-cp / 400));
 }
 
 // ---------------------------------------------------------------------------
-// Classify a move given pre-move and post-move centipawn evaluations,
-// both from WHITE's perspective (positive = White winning).
-//
-// evalBefore: Stockfish's eval of the position BEFORE the move (White POV)
-//   — this is already the "best play" value since it's Stockfish's minimax
-// evalAfter:  Stockfish's eval of the position AFTER the move (White POV)
-// moveData:   chess.js verbose move object (optional, used for brilliant detection)
+// Sacrifice detection helpers
 // ---------------------------------------------------------------------------
-export function classifyMove(evalBefore, evalAfter, moverIsWhite, moveData = null) {
-  // Win probability from mover's perspective before and after
-  const evalBeforeMover = moverIsWhite ?  evalBefore : -evalBefore;
-  const evalAfterMover  = moverIsWhite ?  evalAfter  : -evalAfter;
+const PIECE_VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
-  const wpBefore = winProb(evalBeforeMover);
-  const wpAfter  = winProb(evalAfterMover);
+// True if the moving piece is worth more than the captured piece
+function isExchangeSacrifice(moveObj) {
+  if (!moveObj?.captured) return false;
+  const attackerVal = PIECE_VAL[moveObj.piece]    ?? 0;
+  const victimVal   = PIECE_VAL[moveObj.captured] ?? 0;
+  return attackerVal > victimVal;
+}
 
-  // Win-probability loss in percentage points (positive = mover played worse)
-  const wpLoss = (wpBefore - wpAfter) * 100;
+// ---------------------------------------------------------------------------
+// Classify a move using the Expected Points (EP) loss pipeline.
+//
+// Parameters — all evals are centipawns from WHITE's perspective:
+//   bestEvalBefore   — MultiPV-1 eval of position before move (best play)
+//   secondEvalBefore — MultiPV-2 eval of position before move (2nd-best play)
+//   evalAfter        — eval of position after the move was played (best play)
+//   moverIsWhite     — true if the mover is White
+//   moveObj          — chess.js verbose move result (for sacrifice detection)
+// ---------------------------------------------------------------------------
+export function classifyMove(
+  bestEvalBefore, secondEvalBefore, evalAfter,
+  moverIsWhite, moveObj = null
+) {
+  // EP from mover's perspective
+  const sign = moverIsWhite ? 1 : -1;
 
-  // ── Missed win ─────────────────────────────────────────────────────────
-  // Mover had ≥70% win probability, now ≤50%
-  if (wpBefore >= 70 && wpAfter <= 50 && wpLoss > 20) {
-    return 'missed_win';
+  const ep_best_before   = moverIsWhite
+    ? EP_white( bestEvalBefore)
+    : 1 - EP_white(bestEvalBefore);
+
+  const ep_second_before = moverIsWhite
+    ? EP_white( secondEvalBefore)
+    : 1 - EP_white(secondEvalBefore);
+
+  const ep_after_mover   = moverIsWhite
+    ? EP_white( evalAfter)
+    : 1 - EP_white(evalAfter);
+
+  // EP loss: positive means the mover played worse than best
+  const epLoss = ep_best_before - ep_after_mover;
+
+  // ── Miss ─────────────────────────────────────────────────────────────────
+  // Mover had a nearly won position, let it slip badly
+  if (ep_best_before >= 0.90 && ep_after_mover < 0.55 && epLoss >= 0.30) {
+    return 'miss';
   }
 
-  // ── Brilliant: piece sacrifice that is best move + improves position ─────
-  // Requires: best (or near-best) move, captures opponent with LESS-valuable piece,
-  // and win probability increases
+  // ── Base classification by EP loss ───────────────────────────────────────
+  let base;
+  if      (epLoss <= 0)    base = 'best';
+  else if (epLoss <= 0.02) base = 'excellent';
+  else if (epLoss <= 0.05) base = 'good';
+  else if (epLoss <= 0.10) base = 'inaccuracy';
+  else if (epLoss <= 0.20) base = 'mistake';
+  else                     base = 'blunder';
+
+  // ── Brilliant ─────────────────────────────────────────────────────────────
+  // Requires: best/excellent AND sacrifice AND position not already won AND
+  // resulting position is at least tenable for mover (≥0.45 EP).
   if (
-    moveData?.captured &&
-    wpLoss <= 0 &&
-    wpAfter > wpBefore + 5 // actually gains win probability
+    (base === 'best' || base === 'excellent') &&
+    isExchangeSacrifice(moveObj) &&
+    ep_best_before < 0.90 &&      // not already winning before
+    ep_after_mover >= 0.45         // tenable after sacrifice
   ) {
-    const PIECE_VAL = { p: 1, n: 3, b: 3, r: 5, q: 9 };
-    const attackerVal = PIECE_VAL[moveData.piece]  ?? 0;
-    const victimVal   = PIECE_VAL[moveData.captured] ?? 0;
-    if (attackerVal > victimVal) return 'brilliant'; // gave up more valuable piece
+    return 'brilliant';
   }
 
-  // ── Great move: best move with significant win-prob gain ──────────────────
-  if (wpLoss <= 0 && wpAfter > wpBefore + 3) {
-    return 'great';
+  // ── Great move ────────────────────────────────────────────────────────────
+  // Requires best/excellent AND (
+  //   only-move: 2nd-best loses ≥0.10 EP more than best, OR
+  //   swing: EP actually improves across a category boundary vs. 2nd-best
+  // )
+  if (base === 'best' || base === 'excellent') {
+    const secondLoss = ep_best_before - ep_second_before;
+    const onlyMove   = secondLoss >= 0.10;
+
+    // "Swing": playing this move improved across a category vs. second-best
+    const swing = ep_after_mover - ep_second_before >= 0.05;
+
+    if (onlyMove || swing) return 'great';
   }
 
-  // ── Standard win-probability-loss classification ──────────────────────────
-  if (wpLoss <= 0)   return 'best';
-  if (wpLoss <= 2)   return 'excellent';
-  if (wpLoss <= 5)   return 'good';
-  if (wpLoss <= 10)  return 'inaccuracy';
-  if (wpLoss <= 20)  return 'mistake';
-  return 'blunder';
+  return base;
 }

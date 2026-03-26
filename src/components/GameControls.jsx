@@ -15,17 +15,9 @@ function Toggle({ on, onToggle, label }) {
 export default function GameControls({
   elo, onEloChange,
   showMoveQuality, onToggleMoveQuality,
-  showThreats,     onToggleThreats,
-  onHint,          hintState, hintLoading,
-  onUndo, onNewGame,
+  onNewGame,
   isThinking,
 }) {
-  const hintLabel =
-    hintLoading        ? 'Loading…'
-    : hintState?.step === 1 ? 'Show Destination'
-    : hintState?.step === 2 ? 'Hint shown'
-    : 'Hint';
-
   return (
     <div className="game-controls">
       {/* ELO Selector */}
@@ -47,25 +39,10 @@ export default function GameControls({
       {/* Toggles */}
       <div className="control-group">
         <Toggle on={showMoveQuality} onToggle={onToggleMoveQuality} label="Move Quality" />
-        <Toggle on={showThreats}     onToggle={onToggleThreats}     label="Threats" />
       </div>
 
-      {/* Hint */}
-      <div className="control-group">
-        <button
-          className={`hint-btn ${hintState ? 'hint-btn--active' : ''}`}
-          onClick={onHint}
-          disabled={isThinking || hintLoading || hintState?.step === 2}
-        >
-          💡 {hintLabel}
-        </button>
-      </div>
-
-      {/* Action buttons */}
+      {/* New Game */}
       <div className="control-group control-group--actions">
-        <button className="action-btn action-btn--undo" onClick={onUndo} disabled={isThinking}>
-          ↩ Undo
-        </button>
         <button className="action-btn action-btn--new" onClick={onNewGame}>
           ⊕ New Game
         </button>

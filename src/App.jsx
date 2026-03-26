@@ -1,8 +1,8 @@
 import React from 'react';
 import Board from './components/Board';
 import EvalBar from './components/EvalBar';
-import MoveList from './components/MoveList';
 import GameControls from './components/GameControls';
+import BoardControls from './components/BoardControls';
 import LostMaterialBar from './components/LostMaterialBar';
 import { useChessGame } from './hooks/useChessGame';
 
@@ -16,9 +16,8 @@ export default function App() {
       </header>
 
       <main className="game-layout">
-        {/* ── Left column: eval bar + material + board ── */}
+        {/* ── Left column: material + eval bar + board + controls ── */}
         <div className="board-column">
-          {/* Black's lost material (pieces white captured) — shown above board */}
           <LostMaterialBar
             capturedByWhite={game.capturedByWhite}
             capturedByBlack={game.capturedByBlack}
@@ -43,27 +42,31 @@ export default function App() {
               hintState={game.hintState}
             />
           </div>
+
+          <BoardControls
+            onUndo={game.handleUndo}
+            isThinking={game.isThinking}
+            onHint={game.handleHint}
+            hintState={game.hintState}
+            hintLoading={game.hintLoading}
+            onThreats={game.handleThreats}
+            threatsActive={game.threatsActive}
+            viewIndex={game.viewIndex}
+            onScrubLeft={game.handleScrubLeft}
+            onScrubRight={game.handleScrubRight}
+            totalMoves={game.totalMoves}
+          />
         </div>
 
-        {/* ── Right column: controls + move list ── */}
+        {/* ── Right column: controls only ── */}
         <div className="side-column">
           <GameControls
             elo={game.elo}
             onEloChange={game.setElo}
             showMoveQuality={game.showMoveQuality}
             onToggleMoveQuality={game.toggleMoveQuality}
-            showThreats={game.showThreats}
-            onToggleThreats={game.toggleThreats}
-            onHint={game.handleHint}
-            hintState={game.hintState}
-            hintLoading={game.hintLoading}
-            onUndo={game.handleUndo}
             onNewGame={game.handleNewGame}
             isThinking={game.isThinking}
-          />
-          <MoveList
-            moves={game.moves}
-            showMoveQuality={game.showMoveQuality}
           />
         </div>
       </main>

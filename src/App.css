@@ -708,3 +708,87 @@ html, body, #root {
   width: 100%;
   height: 100%;
 }
+
+/* ─────────────────────────────────────────────────────────
+   Board controls row (under the board)
+───────────────────────────────────────────────────────── */
+.board-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  width: var(--board-size);
+  flex-wrap: wrap;
+}
+
+.bc-btn {
+  padding: 7px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.bc-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bc-btn--undo {
+  background: #2a3a5a;
+  color: #8ab4e8;
+  border-color: #3a4a6a;
+}
+.bc-btn--undo:hover:not(:disabled) { background: #3a4a6a; }
+
+.bc-btn--hint {
+  background: #2a3a2a;
+  color: #9cc89a;
+  border-color: #3a5a3a;
+}
+.bc-btn--hint:hover:not(:disabled) { background: #3a4a3a; }
+
+.bc-btn--threats {
+  background: #3a2a2a;
+  color: #e09090;
+  border-color: #5a3a3a;
+}
+.bc-btn--threats:hover:not(:disabled) { background: #4a3030; }
+
+.bc-btn--active {
+  border-color: #4cd080 !important;
+  background: #1a4a2a !important;
+  color: #4cd080 !important;
+}
+
+.bc-btn--threats.bc-btn--active {
+  border-color: #e84855 !important;
+  background: #4a1a1a !important;
+  color: #f08080 !important;
+}
+
+.bc-scrub {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.bc-btn--scrub {
+  background: #2a2a4a;
+  color: var(--text-dim);
+  border-color: var(--border);
+  padding: 7px 14px;
+  font-size: 1rem;
+}
+.bc-btn--scrub:hover:not(:disabled) { background: #3a3a5a; color: var(--text); }
+
+.bc-review-label {
+  font-size: 0.75rem;
+  color: #f0a15a;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  margin-left: 4px;
+}
