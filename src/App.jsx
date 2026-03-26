@@ -3,6 +3,7 @@ import Board from './components/Board';
 import EvalBar from './components/EvalBar';
 import MoveList from './components/MoveList';
 import GameControls from './components/GameControls';
+import LostMaterialBar from './components/LostMaterialBar';
 import { useChessGame } from './hooks/useChessGame';
 
 export default function App() {
@@ -15,8 +16,15 @@ export default function App() {
       </header>
 
       <main className="game-layout">
-        {/* ── Left column: eval bar + board ── */}
+        {/* ── Left column: eval bar + material + board ── */}
         <div className="board-column">
+          {/* Black's lost material (pieces white captured) — shown above board */}
+          <LostMaterialBar
+            capturedByWhite={game.capturedByWhite}
+            capturedByBlack={game.capturedByBlack}
+            materialAdvantage={game.materialAdvantage}
+          />
+
           <div className="board-with-eval">
             <EvalBar evaluation={game.evaluation} />
             <Board
@@ -31,6 +39,8 @@ export default function App() {
               gameState={game.gameState}
               moveQualityPopup={game.moveQualityPopup}
               showMoveQuality={game.showMoveQuality}
+              threats={game.threats}
+              hintState={game.hintState}
             />
           </div>
         </div>
@@ -42,6 +52,11 @@ export default function App() {
             onEloChange={game.setElo}
             showMoveQuality={game.showMoveQuality}
             onToggleMoveQuality={game.toggleMoveQuality}
+            showThreats={game.showThreats}
+            onToggleThreats={game.toggleThreats}
+            onHint={game.handleHint}
+            hintState={game.hintState}
+            hintLoading={game.hintLoading}
             onUndo={game.handleUndo}
             onNewGame={game.handleNewGame}
             isThinking={game.isThinking}

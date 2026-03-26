@@ -16,6 +16,10 @@
   --sq-dark:     #b58863;
   --sq-selected: rgba(20, 85, 30, 0.6);
   --sq-lastmove: rgba(205, 210, 106, 0.45);
+  --sq-threatened: rgba(220, 50, 50, 0.35);
+  --sq-attacker:   rgba(255, 140, 0, 0.25);
+  --sq-hint-from:  rgba(100, 200, 120, 0.5);
+  --sq-hint-to:    rgba(60, 180, 100, 0.55);
 
   --board-size: 480px;
   --sq-size:    60px;
@@ -195,9 +199,11 @@ html, body, #root {
   background: var(--sq-selected) !important;
 }
 
-.sq-lastmove {
-  background: var(--sq-lastmove) !important;
-}
+.sq-lastmove   { background: var(--sq-lastmove)   !important; }
+.sq-threatened { background: var(--sq-threatened) !important; }
+.sq-attacker   { background: var(--sq-attacker)   !important; }
+.sq-hint-from  { background: var(--sq-hint-from)  !important; }
+.sq-hint-to    { background: var(--sq-hint-to)    !important; }
 
 /* Rank / file labels */
 .rank-label {
@@ -413,11 +419,12 @@ html, body, #root {
 .toggle-btn {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background: none;
   border: none;
   cursor: pointer;
-  padding: 0;
+  padding: 4px 0;
+  width: 100%;
 }
 
 .toggle-track {
@@ -605,4 +612,99 @@ html, body, #root {
   font-size: 0.78rem;
   font-weight: 900;
   line-height: 1;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Threat text
+───────────────────────────────────────────────────────── */
+.threat-text {
+  margin-top: 6px;
+  padding: 7px 10px;
+  background: rgba(220, 50, 50, 0.12);
+  border: 1px solid rgba(220, 50, 50, 0.3);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: #f08080;
+  max-width: var(--board-size);
+}
+
+/* ─────────────────────────────────────────────────────────
+   Lost material bar
+───────────────────────────────────────────────────────── */
+.material-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+  min-height: 36px;
+}
+
+.material-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 16px;
+}
+
+.material-pieces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+
+.material-piece {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.material-piece--black {
+  color: #1a1a1a;
+  text-shadow: 0 0 1px rgba(255,255,255,0.3);
+}
+.material-piece--white {
+  color: #f5f5f5;
+  text-shadow: 0 0 2px rgba(0,0,0,0.6);
+}
+
+.material-advantage {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #9cc89a;
+  margin-left: 3px;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Hint button
+───────────────────────────────────────────────────────── */
+.hint-btn {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  background: #2a3a2a;
+  border: 1px solid #3a5a3a;
+  border-radius: 7px;
+  color: #9cc89a;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  text-align: left;
+}
+
+.hint-btn:hover:not(:disabled) { background: #3a4a3a; }
+.hint-btn--active { background: #1a4a2a; border-color: #4cd080; }
+.hint-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ─────────────────────────────────────────────────────────
+   Toggle label text (inline with toggle switch)
+───────────────────────────────────────────────────────── */
+.toggle-label-text {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-left: 2px;
+}
+
+/* SVG overlay must fill the board absolutely */
+.board-svg {
+  width: 100%;
+  height: 100%;
 }
