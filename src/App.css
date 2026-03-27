@@ -44,6 +44,9 @@ html, body, #root {
 }
 
 .app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 16px 0 20px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 24px;
@@ -55,6 +58,139 @@ html, body, #root {
   letter-spacing: 1px;
   color: var(--text);
 }
+
+.new-game-link {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.new-game-link:hover { color: var(--text); border-color: #5578b0; }
+
+/* Engine error toast (non-blocking) */
+.engine-error {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: rgba(220, 50, 50, 0.12);
+  border: 1px solid rgba(220, 50, 50, 0.3);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: #f08080;
+  max-width: var(--board-size);
+}
+
+/* ─────────────────────────────────────────────────────────
+   Start overlay
+───────────────────────────────────────────────────────── */
+.start-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 26, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(4px);
+}
+
+.start-modal {
+  background: #1c1c36;
+  border: 1px solid #3a3a5a;
+  border-radius: 14px;
+  padding: 32px 36px;
+  width: 380px;
+  max-width: 95vw;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+}
+
+.start-modal-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
+}
+
+.start-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.start-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+}
+
+.color-tiles {
+  display: flex;
+  gap: 10px;
+}
+
+.color-tile {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px;
+  background: #2a2a4a;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.color-tile:hover { background: #3a3a5a; }
+.color-tile--active { border-color: #5578b0; background: #1a2a4a; }
+
+.color-tile-icon { font-size: 2rem; line-height: 1; }
+.color-tile-name { font-size: 0.78rem; color: var(--text-dim); font-weight: 600; }
+.color-tile--active .color-tile-name { color: #9fc0f0; }
+
+.elo-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.elo-tile {
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: #2a2a4a;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.elo-tile:hover { background: #3a3a5a; color: var(--text); }
+.elo-tile--active { background: #1a3a5a; border-color: #5578b0; color: #9fc0f0; }
+
+.start-btn {
+  padding: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  background: #1a6a3a;
+  border: 2px solid #2aaa6a;
+  border-radius: 8px;
+  color: #4cd080;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  letter-spacing: 0.3px;
+}
+.start-btn:hover:not(:disabled) { background: #2a7a4a; }
+.start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ─────────────────────────────────────────────────────────
    Two-column game layout
@@ -107,6 +243,7 @@ html, body, #root {
   position: relative;
   transition: height 0.4s ease;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .eval-black {

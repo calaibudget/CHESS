@@ -1,22 +1,36 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Board from './components/Board';
 import EvalBar from './components/EvalBar';
 import GameControls from './components/GameControls';
 import BoardControls from './components/BoardControls';
 import LostMaterialBar from './components/LostMaterialBar';
+import StartOverlay from './components/StartOverlay';
 import { useChessGame } from './hooks/useChessGame';
 
 export default function App() {
   const game = useChessGame();
+  const [showOverlay, setShowOverlay] = useState(true);
+
+  const handleStart = (params) => {
+    game.handleNewGame(params);
+    setShowOverlay(false);
+  };
+
+  const handleNewGame = () => setShowOverlay(true);
 
   return (
     <div className="app">
+      {showOverlay && <StartOverlay onStart={handleStart} />}
+
       <header className="app-header">
         <h1 className="app-title">Chess</h1>
+        <button className="new-game-link" onClick={handleNewGame}>
+          New Game
+        </button>
       </header>
 
       <main className="game-layout">
-        {/* ── Left column: material + eval bar + board + controls ── */}
+        {/* ── Left column ── */}
         <div className="board-column">
           <LostMaterialBar
             capturedByWhite={game.capturedByWhite}
@@ -56,16 +70,17 @@ export default function App() {
             onScrubRight={game.handleScrubRight}
             totalMoves={game.totalMoves}
           />
+
+          {game.engineError && (
+            <div className="engine-error">{game.engineError}</div>
+          )}
         </div>
 
-        {/* ── Right column: controls only ── */}
+        {/* ── Right column ── */}
         <div className="side-column">
           <GameControls
-            elo={game.elo}
-            onEloChange={game.setElo}
             showMoveQuality={game.showMoveQuality}
             onToggleMoveQuality={game.toggleMoveQuality}
-            onNewGame={game.handleNewGame}
             isThinking={game.isThinking}
           />
         </div>

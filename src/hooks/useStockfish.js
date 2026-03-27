@@ -1,8 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react';
 
-// ---------------------------------------------------------------------------
-// ELO → Stockfish UCI strength settings
-// ---------------------------------------------------------------------------
 const ELO_SKILL_LEVEL = { 400: 0, 600: 0, 800: 1, 1000: 3, 1200: 5 };
 
 function applyEloSettings(send, elo) {
@@ -17,88 +14,120 @@ function applyEloSettings(send, elo) {
 }
 
 // ---------------------------------------------------------------------------
-// Parse Stockfish centipawn score from an "info" line.
-// Returns score from the SIDE-TO-MOVE's perspective.
-// ---------------------------------------------------------------------------
-function parseScore(line) {
-  const mate = line.match(/score mate (-?\d+)/);
-  if (mate) {
-    const m = parseInt(mate[1]);
-    return m > 0 ? 30000 - m : -30000 - m;
-  }
-  const cp = line.match(/score cp (-?\d+)/);
-  return cp ? parseInt(cp[1]) : null;
-}
-
-// ---------------------------------------------------------------------------
-// Factory: create a Stockfish worker wrapper with a serial promise queue.
+// Build a serialized Stockfish worker with hard timeouts on every operation.
 // ---------------------------------------------------------------------------
 function makeWorker() {
-  const worker      = new Worker('/stockfish-lite.js');
-  const state       = {
+  let worker;
+  try { worker = new Worker('/stockfish-lite.js'); }
+  catch (e) {
+    console.error('[Stockfish] Worker constructor failed:', e);
+    return null; // caller must handle null
+  }
+
+  const state = {
     ready:       false,
+    unavailable: false,
     listenerFn:  null,
     queue:       Promise.resolve(),
     eloCache:    null,
   };
 
-  worker.onmessage = (e) => {
-    const line = typeof e.data === 'string' ? e.data : String(e.data);
+  worker.onerror = (e) => {
+    console.error('[Stockfish] worker error:', e.message || e);
+    state.unavailable = true;
+    state.ready = false;
+  };
+
+  worker.onmessage = (ev) => {
+    const line = typeof ev.data === 'string' ? ev.data : String(ev.data);
     if (!state.ready && line === 'readyok') state.ready = true;
-    state.listenerFn?.(line);
+    if (state.listenerFn) state.listenerFn(line);
   };
 
   worker.postMessage('uci');
   worker.postMessage('isready');
 
-  const send = (cmd) => worker.postMessage(cmd);
+  // If not ready in 8s, mark engine unavailable so the queue drains gracefully.
+  setTimeout(() => {
+    if (!state.ready && !state.unavailable) {
+      console.warn('[Stockfish] readyok never received — marking unavailable');
+      state.unavailable = true;
+    }
+  }, 8000);
 
-  const waitReady = () => new Promise(resolve => {
-    if (state.ready) { resolve(); return; }
-    const t = setInterval(() => { if (state.ready) { clearInterval(t); resolve(); } }, 50);
+  const send = (cmd) => { try { worker.postMessage(cmd); } catch (_) {} };
+
+  // Returns rejected promise if engine unavailable, otherwise resolves when ready.
+  const waitReady = () => new Promise((resolve, reject) => {
+    if (state.ready)       { resolve();                          return; }
+    if (state.unavailable) { reject(new Error('unavailable'));   return; }
+    const iv = setInterval(() => {
+      if (state.ready)       { clearInterval(iv); resolve(); }
+      else if (state.unavailable) { clearInterval(iv); reject(new Error('unavailable')); }
+    }, 50);
+    setTimeout(() => { clearInterval(iv); reject(new Error('ready_timeout')); }, 8000);
   });
 
+  // Send `stop`, wait for bestmove acknowledgment (max 500ms).
   const stopAndDrain = () => new Promise(resolve => {
-    state.listenerFn = (line) => {
-      if (line.startsWith('bestmove')) { state.listenerFn = null; resolve(); }
-    };
+    let done = false;
+    const finish = () => { if (!done) { done = true; state.listenerFn = null; resolve(); } };
+    state.listenerFn = (line) => { if (line.startsWith('bestmove')) finish(); };
     send('stop');
-    setTimeout(resolve, 80);
+    setTimeout(finish, 500);
   });
 
+  // Serial job queue.  Each job runs after the previous one finishes (or errors).
   const enqueue = (job) => {
-    state.queue = state.queue
-      .then(waitReady)
+    const p = state.queue
+      .then(() => waitReady())
       .then(job)
-      .catch(() => null);
-    return state.queue;
+      .catch((err) => { console.warn('[Stockfish] queue job error:', err?.message); return null; });
+    // Advance the queue regardless of success/failure.
+    state.queue = p.then(() => {}, () => {});
+    return p;
   };
 
-  // Raw UCI search (runs inside enqueue)
-  const _search = (fen, { movetime, depth, multiPV = 1 }) => new Promise(resolve => {
-    const scores = {}; // pv index → last score
+  // UCI search — resolves or REJECTS on timeout so the queue moves on.
+  const _search = (fen, { movetime, depth, multiPV = 1 }) => new Promise((resolve, reject) => {
+    const scores = {};
+    // Upper-bound timeout: movetime * 4 + 2s, or depth * 400ms + 3s
+    const maxMs = movetime ? movetime * 4 + 2000 : (depth || 10) * 400 + 3000;
+
+    const timer = setTimeout(() => {
+      console.warn('[Stockfish] _search timeout after', maxMs, 'ms');
+      state.listenerFn = null;
+      send('stop');
+      reject(new Error('search_timeout'));
+    }, maxMs);
+
     state.listenerFn = (line) => {
       if (line.startsWith('info')) {
-        const pvMatch = line.match(/\smultipv\s+(\d+)/);
-        const pvIdx   = pvMatch ? parseInt(pvMatch[1]) : 1;
-        const s = parseScore(line);
-        if (s !== null) scores[pvIdx] = s;
+        const pvIdx = parseInt((line.match(/\smultipv\s+(\d+)/) || [, '1'])[1]);
+        const mate  = line.match(/score mate (-?\d+)/);
+        const cp    = line.match(/score cp (-?\d+)/);
+        if (mate) {
+          const m = parseInt(mate[1]);
+          scores[pvIdx] = m > 0 ? 30000 - m : -30000 - m;
+        } else if (cp) {
+          scores[pvIdx] = parseInt(cp[1]);
+        }
       }
       if (line.startsWith('bestmove')) {
+        clearTimeout(timer);
         state.listenerFn = null;
         const turn = fen.split(' ')[1];
-        // Convert all scores to White POV
-        const toWhitePOV = (s) => turn === 'w' ? s : -s;
+        const toW  = (s) => turn === 'w' ? s : -s;
         resolve({
-          uciMove: line.split(' ')[1],
-          scoreCp: toWhitePOV(scores[1] ?? 0),
-          secondCp: multiPV >= 2
-            ? toWhitePOV(scores[2] ?? scores[1] ?? 0)
-            : null,
+          uciMove:  line.split(' ')[1],
+          scoreCp:  toW(scores[1] ?? 0),
+          secondCp: multiPV >= 2 ? toW(scores[2] ?? scores[1] ?? 0) : null,
         });
       }
     };
-    if (multiPV > 1) send(`setoption name MultiPV value ${multiPV}`);
+
+    // Reset/set MultiPV each time so searches don't bleed settings
+    send(`setoption name MultiPV value ${multiPV}`);
     send(`position fen ${fen}`);
     if (depth)    send(`go depth ${depth}`);
     else          send(`go movetime ${movetime}`);
@@ -110,18 +139,25 @@ function makeWorker() {
     applyEloSettings(send, elo);
   };
 
-  return { send, enqueue, stopAndDrain, _search, configureElo, state,
-           terminate: () => { worker.postMessage('quit'); worker.terminate(); } };
+  return {
+    send, enqueue, stopAndDrain, _search, configureElo, state,
+    terminate: () => { try { send('quit'); } catch (_) {} try { worker.terminate(); } catch (_) {} },
+  };
 }
 
 // ---------------------------------------------------------------------------
 // useStockfish
-// Exposes two workers: one for game (AI/eval/hints) and one for analysis
-// (background quality classification that uses MultiPV 2).
+//
+// FIX for "Thinking…" freeze:
+//   • gameRef   → only AI moves + hints  (never blocked by eval)
+//   • analysisRef → eval bar + quality classification (separate queue)
+//
+// Both workers have per-operation timeouts so a crashed/unresponsive WASM
+// never permanently blocks the queue.
 // ---------------------------------------------------------------------------
 export function useStockfish() {
-  const gameRef     = useRef(null);  // game worker
-  const analysisRef = useRef(null);  // analysis worker
+  const gameRef     = useRef(null);
+  const analysisRef = useRef(null);
 
   useEffect(() => {
     gameRef.current     = makeWorker();
@@ -132,54 +168,74 @@ export function useStockfish() {
     };
   }, []);
 
-  // ── Game worker API ───────────────────────────────────────────────────────
+  // ── Game worker: AI moves ─────────────────────────────────────────────────
 
   const findBestMove = useCallback((fen, elo) => {
     const w = gameRef.current;
-    if (!w) return Promise.resolve(null);
-    return w.enqueue(async () => {
-      await w.stopAndDrain();
-      w.configureElo(elo);
-      const moveTime = elo <= 800 ? 200 : elo <= 1400 ? 500 : 800;
-      const { uciMove } = await w._search(fen, { movetime: moveTime });
-      return uciMove && uciMove !== '(none)' ? uciMove : null;
+    if (!w || w.state.unavailable) return Promise.resolve(null);
+
+    // Hard 5s wrapper so isThinking never sticks even if the queue deadlocks.
+    return new Promise((resolve) => {
+      const hardTimeout = setTimeout(() => {
+        console.warn('[findBestMove] hard timeout — returning null for fallback');
+        resolve(null);
+      }, 5000);
+
+      w.enqueue(async () => {
+        await w.stopAndDrain();
+        w.configureElo(elo);
+        const moveTime = elo <= 800 ? 200 : elo <= 1400 ? 500 : 800;
+        const { uciMove } = await w._search(fen, { movetime: moveTime });
+        clearTimeout(hardTimeout);
+        resolve(uciMove && uciMove !== '(none)' ? uciMove : null);
+      }).catch(() => { clearTimeout(hardTimeout); resolve(null); });
     });
   }, []);
 
-  const evaluatePosition = useCallback((fen, depth = 12) => {
-    const w = gameRef.current;
-    if (!w) return Promise.resolve(0);
-    return w.enqueue(async () => {
-      await w.stopAndDrain();
-      const { scoreCp } = await w._search(fen, { depth });
-      return scoreCp;
-    });
-  }, []);
+  // ── Game worker: hints ────────────────────────────────────────────────────
 
   const getHint = useCallback((fen) => {
     const w = gameRef.current;
-    if (!w) return Promise.resolve(null);
+    if (!w || w.state.unavailable) return Promise.resolve(null);
+
+    return new Promise((resolve) => {
+      const hardTimeout = setTimeout(() => resolve(null), 5000);
+
+      w.enqueue(async () => {
+        await w.stopAndDrain();
+        w.state.eloCache = null; // reset so next findBestMove re-applies ELO
+        send('setoption name UCI_LimitStrength value false');
+        send('setoption name Skill Level value 20');
+        const { uciMove } = await w._search(fen, { movetime: 400 });
+        clearTimeout(hardTimeout);
+        resolve(uciMove && uciMove !== '(none)' ? uciMove : null);
+      }).catch(() => { clearTimeout(hardTimeout); resolve(null); });
+    });
+
+    function send(cmd) { w.send(cmd); }
+  }, []);
+
+  // ── Analysis worker: eval bar (cosmetic, never blocks game flow) ──────────
+
+  const evaluatePosition = useCallback((fen, depth = 10) => {
+    const w = analysisRef.current;
+    if (!w || w.state.unavailable) return Promise.resolve(0);
     return w.enqueue(async () => {
       await w.stopAndDrain();
-      // Full strength for hints — reset ELO cache so next findBestMove reconfigures
-      w.state.eloCache = null;
-      w.send('setoption name UCI_LimitStrength value false');
-      w.send('setoption name Skill Level value 20');
-      const { uciMove } = await w._search(fen, { movetime: 400 });
-      return uciMove && uciMove !== '(none)' ? uciMove : null;
+      const { scoreCp } = await w._search(fen, { depth });
+      return scoreCp ?? 0;
     });
   }, []);
 
-  // ── Analysis worker API ───────────────────────────────────────────────────
+  // ── Analysis worker: quality classification (MultiPV 2) ──────────────────
 
-  // Returns { bestCp, secondCp } both from White's POV
   const evaluateWithMultiPV = useCallback((fen) => {
     const w = analysisRef.current;
-    if (!w) return Promise.resolve({ bestCp: 0, secondCp: 0 });
+    if (!w || w.state.unavailable) return Promise.resolve({ bestCp: 0, secondCp: 0 });
     return w.enqueue(async () => {
       await w.stopAndDrain();
       const { scoreCp, secondCp } = await w._search(fen, { depth: 10, multiPV: 2 });
-      return { bestCp: scoreCp, secondCp: secondCp ?? scoreCp };
+      return { bestCp: scoreCp ?? 0, secondCp: secondCp ?? scoreCp ?? 0 };
     });
   }, []);
 
