@@ -52,6 +52,7 @@ export default function App() {
               gameState={game.gameState}
               moveQualityPopup={game.moveQualityPopup}
               showMoveQuality={game.showMoveQuality}
+              accuracySummary={game.accuracySummary}
               threats={game.threats}
               hintState={game.hintState}
             />

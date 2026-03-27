@@ -204,15 +204,13 @@ export function useStockfish() {
       w.enqueue(async () => {
         await w.stopAndDrain();
         w.state.eloCache = null; // reset so next findBestMove re-applies ELO
-        send('setoption name UCI_LimitStrength value false');
-        send('setoption name Skill Level value 20');
+        w.send('setoption name UCI_LimitStrength value false');
+        w.send('setoption name Skill Level value 20');
         const { uciMove } = await w._search(fen, { movetime: 400 });
         clearTimeout(hardTimeout);
         resolve(uciMove && uciMove !== '(none)' ? uciMove : null);
       }).catch(() => { clearTimeout(hardTimeout); resolve(null); });
     });
-
-    function send(cmd) { w.send(cmd); }
   }, []);
 
   // ── Analysis worker: eval bar (cosmetic, never blocks game flow) ──────────

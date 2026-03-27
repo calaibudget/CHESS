@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Chess } from 'chess.js';
 import { useStockfish } from './useStockfish';
-import { classifyMove } from '../utils/moveQuality';
+import { classifyMove, moveAccuracy, calcGameAccuracy } from '../utils/moveQuality';
 import { computeThreats } from '../utils/threats';
 
 let moveIdCounter = 0;
@@ -60,6 +60,7 @@ export function useChessGame() {
   const [promotionPending, setPromotionPending] = useState(null);
   const [moveQualityPopup, setMoveQualityPopup] = useState(null);
   const [engineError,      setEngineError]      = useState(null);
+  const [accuracySummary,  setAccuracySummary]  = useState(null);
 
   // ── Player color ('w' = human plays White; 'b' = human plays Black) ───────
   const [playerColor, setPlayerColor] = useState('w');
@@ -111,15 +112,16 @@ export function useChessGame() {
     chessRef.current.moves({ verbose: true }).filter(m => m.from === sq),
   []);
 
-  // ── Async quality classification ──────────────────────────────────────────
+  // ── Async quality + accuracy classification ───────────────────────────────
   const classifyEntryAsync = useCallback((moveId, prevFen, postFen, color, moveObj) => {
     const moverIsWhite = color === 'w';
     Promise.all([
       sf.evaluateWithMultiPV(prevFen),
       sf.evaluatePosition(postFen, 10),
     ]).then(([{ bestCp, secondCp }, evalAfter]) => {
-      const quality = classifyMove(bestCp, secondCp, evalAfter, moverIsWhite, moveObj);
-      setMoves(prev => prev.map(m => m.id === moveId ? { ...m, quality } : m));
+      const quality  = classifyMove(bestCp, secondCp, evalAfter, moverIsWhite, moveObj);
+      const accuracy = moveAccuracy(bestCp, evalAfter, moverIsWhite);
+      setMoves(prev => prev.map(m => m.id === moveId ? { ...m, quality, accuracy } : m));
       setMoveQualityPopup({ quality, visible: true });
       setTimeout(() => setMoveQualityPopup(p => p ? { ...p, visible: false } : null), 1800);
       setTimeout(() => setMoveQualityPopup(null), 2200);
@@ -312,6 +314,7 @@ export function useChessGame() {
     setThreatsData(null);
     setViewIndex(null);
     setEngineError(null);
+    setAccuracySummary(null);
     // If player is Black, the AI-auto-trigger effect will fire on the next render
     // because chess.turn() === 'w' !== playerColorRef.current ('b').
   }, []);
@@ -362,6 +365,17 @@ export function useChessGame() {
     } catch (_) {}
     finally { setHintLoading(false); }
   }, [isThinking, gameState, viewIndex, hintState, sf]);
+
+  // ── Game accuracy (computed when game ends + all player moves classified) ──
+  useEffect(() => {
+    if (gameState === 'playing' || !showMoveQuality) return;
+    const playerMoves = moves.filter(m => m.color === playerColorRef.current);
+    if (!playerMoves.length) return;
+    const classified = playerMoves.filter(m => m.accuracy != null);
+    if (classified.length === playerMoves.length) {
+      setAccuracySummary(calcGameAccuracy(classified.map(m => m.accuracy)));
+    }
+  }, [moves, gameState, showMoveQuality]);
 
   // ── Position scrubbing ────────────────────────────────────────────────────
   // fenHistory[0] = start; fenHistory[i] = after move i.
@@ -433,7 +447,7 @@ export function useChessGame() {
     legalMoves:     viewIndex !== null ? []   : legalMoves,
     lastMove:  viewedLastMove,
     evaluation, moves, elo, showMoveQuality, isThinking, gameState,
-    promotionPending, moveQualityPopup, engineError, playerColor,
+    promotionPending, moveQualityPopup, engineError, playerColor, accuracySummary,
     // Threats (single-use)
     threats:      threatsData ?? { threatened: new Set(), attackerSquares: new Set(), arrows: [], threatText: '' },
     threatsActive: !!threatsData,

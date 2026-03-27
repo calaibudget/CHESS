@@ -108,3 +108,30 @@ export function classifyMove(
 
   return base;
 }
+
+// ---------------------------------------------------------------------------
+// Per-move accuracy (Lichess formula, 0–100 scale).
+// cpBefore and cpAfter are both from WHITE's perspective.
+// ---------------------------------------------------------------------------
+function winPercent(cp) {
+  return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
+}
+
+export function moveAccuracy(cpBefore, cpAfter, moverIsWhite) {
+  const sign     = moverIsWhite ? 1 : -1;
+  const wpBefore = winPercent(cpBefore * sign);
+  const wpAfter  = winPercent(cpAfter  * sign);
+  const drop     = Math.max(0, wpBefore - wpAfter);
+  return Math.min(100, Math.max(0, 103.1668 * Math.exp(-0.04354 * drop) - 3.1669));
+}
+
+// ---------------------------------------------------------------------------
+// Overall game accuracy: harmonic mean of per-move accuracy scores.
+// Returns a number (0–100) or null if no scores provided.
+// ---------------------------------------------------------------------------
+export function calcGameAccuracy(accuracyScores) {
+  const valid = accuracyScores.filter(s => s != null && s > 0);
+  if (!valid.length) return null;
+  const harmonicMean = valid.length / valid.reduce((sum, s) => sum + 1 / s, 0);
+  return Math.round(harmonicMean * 10) / 10;
+}

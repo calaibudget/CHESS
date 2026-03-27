@@ -83,6 +83,7 @@ export default function Board({
   gameState,
   moveQualityPopup,
   showMoveQuality,
+  accuracySummary,
   // Threats
   threats,
   // Hint
@@ -111,9 +112,14 @@ export default function Board({
     <div className="board-wrapper">
       {gameState !== 'playing' && (
         <div className="game-over-banner">
-          {gameState === 'checkmate' && '♚ Checkmate!'}
-          {gameState === 'stalemate' && '⚖ Stalemate — Draw'}
-          {gameState === 'draw'      && '⚖ Draw'}
+          <span>
+            {gameState === 'checkmate' && '♚ Checkmate!'}
+            {gameState === 'stalemate' && '⚖ Stalemate — Draw'}
+            {gameState === 'draw'      && '⚖ Draw'}
+          </span>
+          {accuracySummary !== null && (
+            <span className="game-accuracy">Your accuracy: {accuracySummary}%</span>
+          )}
         </div>
       )}
 
